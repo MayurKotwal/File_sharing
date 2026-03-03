@@ -10,10 +10,14 @@ const crypto = require('crypto');
 const app = express();
 const server = http.createServer(app);
 
+const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
 // Security middleware
 app.use(helmet());
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: corsOrigins,
     methods: ['GET', 'POST'],
     credentials: true
 }));
@@ -36,12 +40,24 @@ const generateToken = () => {
     return crypto.randomBytes(16).toString('hex');
 };
 
+// Replace roomId generation with 4-letter code
+function generateRoomCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let code = '';
+    for (let i = 0; i < 4; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
 // Create a new room
 app.post('/api/room', (req, res) => {
     try {
-        const roomId = crypto.randomBytes(4).toString('hex');
+        let roomId;
+        do {
+            roomId = generateRoomCode();
+        } while (rooms.has(roomId));
         const token = crypto.randomBytes(32).toString('hex');
-        
         rooms.set(roomId, {
             token,
             connections: new Set(),
@@ -90,7 +106,7 @@ app.post('/api/room/:roomId/join', (req, res) => {
 // Initialize Socket.IO
 const io = new Server(server, {
     cors: {
-        origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+        origin: corsOrigins,
         methods: ['GET', 'POST'],
         credentials: true
     }
@@ -170,29 +186,7 @@ if (process.env.NODE_ENV === 'production') {
 
 const PORT = process.env.PORT || 5000;
 
-// Function to find an available port
-const findAvailablePort = async (startPort) => {
-    const net = require('net');
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.unref();
-        server.on('error', () => {
-            resolve(findAvailablePort(startPort + 1));
-        });
-        server.listen(startPort, () => {
-            server.close(() => {
-                resolve(startPort);
-            });
-        });
-    });
-};
-
-// Start server on available port
-findAvailablePort(PORT).then(port => {
-    server.listen(port, () => {
-        console.log(`Server running on port ${port}`);
-        console.log(`CORS enabled for: http://localhost:3000`);
-    });
-}).catch(error => {
-    console.error('Failed to start server:', error);
-}); 
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`CORS enabled for: http://localhost:3000`);
+});

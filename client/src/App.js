@@ -56,12 +56,11 @@ const theme = createTheme({
 
 const App = () => {
   useEffect(() => {
-    // Get the server port from the environment or use default
-    const serverPort = process.env.REACT_APP_SERVER_PORT || 5000;
-    const baseUrl = process.env.NODE_ENV === 'production'
-      ? 'https://yourdomain.com'
-      : `http://localhost:${serverPort}`;
-    
+    const baseUrl = process.env.REACT_APP_SERVER_URL ||
+      `http://localhost:${process.env.REACT_APP_SERVER_PORT || 5000}`;
+    if (process.env.NODE_ENV === 'production' && !process.env.REACT_APP_SERVER_URL) {
+      console.warn('Set REACT_APP_SERVER_URL to your backend URL for production.');
+    }
     socketManager.setBaseUrl(baseUrl);
   }, []);
 
@@ -76,4 +75,4 @@ const App = () => {
   );
 };
 
-export default App; 
+export default App;

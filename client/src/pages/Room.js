@@ -45,91 +45,38 @@ const Room = () => {
             return;
         }
 
+        let pc;
+        let dc;
+        let isOfferer = false;
+
         const setupWebRTC = async () => {
             try {
-                const pc = new RTCPeerConnection({
+                pc = new RTCPeerConnection({
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' }
                     ]
                 });
 
-                const dc = pc.createDataChannel('fileTransfer', {
-                    ordered: true
-                });
-
-                dc.onopen = () => {
-                    setIsConnecting(false);
-                    console.log('Data channel opened');
-                };
-
-                dc.onclose = () => {
-                    console.log('Data channel closed');
-                };
-
-                dc.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        if (data.type === 'message') {
-                            setMessages(prev => [...prev, {
-                                type: 'received',
-                                content: data.content,
-                                timestamp: new Date()
-                            }]);
-                        } else if (data.type === 'file') {
-                            setFiles(prev => [...prev, {
-                                name: data.name,
-                                size: data.size,
-                                type: data.fileType,
-                                data: data.data
-                            }]);
-                        }
-                    } catch (error) {
-                        console.error('Error parsing message:', error);
-                    }
-                };
+                setPeerConnection(pc);
 
                 pc.onicecandidate = (event) => {
                     if (event.candidate) {
-                        socketManager.sendIceCandidate({
-                            candidate: event.candidate
-                        });
+                        socketManager.sendIceCandidate({ candidate: event.candidate });
                     }
                 };
 
-                pc.ondatachannel = (event) => {
-                    const receiveChannel = event.channel;
-                    receiveChannel.onmessage = (event) => {
-                        try {
-                            const data = JSON.parse(event.data);
-                            if (data.type === 'message') {
-                                setMessages(prev => [...prev, {
-                                    type: 'received',
-                                    content: data.content,
-                                    timestamp: new Date()
-                                }]);
-                            } else if (data.type === 'file') {
-                                setFiles(prev => [...prev, {
-                                    name: data.name,
-                                    size: data.size,
-                                    type: data.fileType,
-                                    data: data.data
-                                }]);
-                            }
-                        } catch (error) {
-                            console.error('Error parsing message:', error);
-                        }
-                    };
-                };
-
-                setPeerConnection(pc);
-                setDataChannel(dc);
-
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                socketManager.sendOffer({ sdp: pc.localDescription });
+                // Listen for offer/answer/ice
+                socketManager.onOffer(async (data) => {
+                    // This peer is the answerer
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    socketManager.sendAnswer({ sdp: pc.localDescription });
+                });
 
                 socketManager.onAnswer(async (data) => {
+                    // This peer is the offerer
                     await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
                 });
 
@@ -137,18 +84,69 @@ const Room = () => {
                     await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
                 });
 
+                // Join the room via socket
+                socketManager.socket.emit('join-room', { roomId, token });
+
+                socketManager.onRoomJoined(async () => {
+                    // If this is the first peer, create offer and data channel
+                    isOfferer = true;
+                    dc = pc.createDataChannel('fileTransfer', { ordered: true });
+                    setDataChannel(dc);
+
+                    dc.onopen = () => {
+                        setIsConnecting(false);
+                        console.log('Data channel opened');
+                    };
+                    dc.onclose = () => console.log('Data channel closed');
+                    dc.onmessage = (event) => handleDataChannelMessage(event);
+
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    socketManager.sendOffer({ sdp: pc.localDescription });
+                });
+
+                // If this is the answerer, listen for data channel
+                pc.ondatachannel = (event) => {
+                    dc = event.channel;
+                    setDataChannel(dc);
+                    dc.onopen = () => {
+                        setIsConnecting(false);
+                        console.log('Data channel opened');
+                    };
+                    dc.onclose = () => console.log('Data channel closed');
+                    dc.onmessage = (event) => handleDataChannelMessage(event);
+                };
             } catch (error) {
-                console.error('Error setting up WebRTC:', error);
                 setError('Failed to establish connection. Please try again.');
             }
         };
 
+        function handleDataChannelMessage(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'message') {
+                    setMessages(prev => [...prev, {
+                        type: 'received',
+                        content: data.content,
+                        timestamp: new Date()
+                    }]);
+                } else if (data.type === 'file') {
+                    setFiles(prev => [...prev, {
+                        name: data.name,
+                        size: data.size,
+                        type: data.fileType,
+                        data: data.data
+                    }]);
+                }
+            } catch (error) {
+                console.error('Error parsing message:', error);
+            }
+        }
+
         setupWebRTC();
 
         return () => {
-            if (peerConnection) {
-                peerConnection.close();
-            }
+            if (pc) pc.close();
             socketManager.disconnect();
         };
     }, [roomId, location.state?.token, navigate]);
@@ -337,4 +335,4 @@ const Room = () => {
     );
 };
 
-export default Room; 
+export default Room;

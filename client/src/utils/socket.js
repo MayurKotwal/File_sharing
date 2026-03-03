@@ -1,15 +1,13 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = process.env.NODE_ENV === 'production'
-    ? 'https://yourdomain.com'
-    : 'http://localhost:5000';
+const SOCKET_BASE_URL = 'http://localhost:5000';
 
 class SocketManager {
     constructor() {
         this.socket = null;
         this.roomId = null;
         this.token = null;
-        this.baseUrl = SOCKET_URL;
+        this.baseUrl = SOCKET_BASE_URL;
         this.isConnected = false;
     }
 
@@ -52,7 +50,10 @@ class SocketManager {
 
     async createRoom() {
         if (!this.isConnected) {
-            throw new Error('Not connected to server');
+            this.connect();
+            await new Promise(resolve => {
+                this.socket.once('connect', resolve);
+            });
         }
 
         try {
@@ -82,7 +83,10 @@ class SocketManager {
 
     async joinRoom(roomId, token) {
         if (!this.isConnected) {
-            throw new Error('Not connected to server');
+            this.connect();
+            await new Promise(resolve => {
+                this.socket.once('connect', resolve);
+            });
         }
 
         try {
@@ -169,4 +173,4 @@ class SocketManager {
     }
 }
 
-export const socketManager = new SocketManager(); 
+export const socketManager = new SocketManager();

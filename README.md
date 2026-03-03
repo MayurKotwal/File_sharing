@@ -67,6 +67,11 @@ npm start
 
 3. Open your browser and navigate to `http://localhost:3000`
 
+## Deployment & testing
+
+- **Backend does not store files.** It only handles room creation (code + token) and WebRTC signaling; file and text data is sent peer-to-peer between the two users.
+- **Deploy:** Frontend (React) can go on **Vercel**. Backend (Node + Socket.IO) must run on **Render**, **Railway**, or similar (Vercel cannot run long-lived WebSockets). See **[DEPLOYMENT.md](DEPLOYMENT.md)** for step-by-step deployment and testing.
+
 ## How to Use
 
 1. **Create a Room:**
